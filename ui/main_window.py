@@ -94,7 +94,8 @@ class MainWindow(QMainWindow):
         """导入按钮点击事件"""
         file_paths, _ = QFileDialog.getOpenFileNames(
             self, "选择图片", "",
-            "图片文件 (*.jpg *.jpeg *.png *.webp)"
+            "图片文件 (*.jpg *.jpeg *.png *.webp)",
+            options=QFileDialog.DontUseNativeDialog
         )
 
         if file_paths:
@@ -130,7 +131,8 @@ class MainWindow(QMainWindow):
 
         output_path, _ = QFileDialog.getSaveFileName(
             self, "保存PDF", "",
-            "PDF文件 (*.pdf)"
+            "PDF文件 (*.pdf)",
+            options=QFileDialog.DontUseNativeDialog
         )
 
         if output_path:
