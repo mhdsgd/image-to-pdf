@@ -1,0 +1,6 @@
+# requirements.txt
+PyQt5==5.15.10
+Pillow==9.5.0
+reportlab==4.4.3
+pyinstaller==5.13.2
+pytest==7.4.4
