@@ -81,3 +81,25 @@ def test_generate_pdf(app):
 
     # 清理
     output_path.unlink()
+
+
+def test_apply_theme_light(app):
+    """测试应用浅色主题"""
+    window = MainWindow()
+    window.apply_theme('light')
+    assert len(window.styleSheet()) > 0
+
+
+def test_apply_theme_dark(app):
+    """测试应用深色主题"""
+    window = MainWindow()
+    window.apply_theme('dark')
+    assert len(window.styleSheet()) > 0
+
+
+def test_apply_theme_nonexistent(app):
+    """测试应用不存在的主题"""
+    window = MainWindow()
+    # 应不会抛出异常
+    window.apply_theme('nonexistent')
+    assert "主题文件不存在" in window.status_bar.currentMessage()

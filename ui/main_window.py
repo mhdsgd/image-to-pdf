@@ -172,8 +172,15 @@ class MainWindow(QMainWindow):
     def apply_theme(self, theme):
         # type: (str) -> None
         """应用主题"""
-        # 主题切换功能将在后续实现
-        pass
+        try:
+            base_dir = Path(__file__).parent.parent
+            style_file = base_dir / "resources" / "styles" / "{}.qss".format(theme)
+            with open(str(style_file), 'r', encoding='utf-8') as f:
+                style = f.read()
+                self.setStyleSheet(style)
+        except FileNotFoundError:
+            self.status_bar.showMessage("主题文件不存在: {}".format(style_file))
+            print("主题文件不存在: {}".format(style_file))
 
     def on_image_selected(self, index):
         # type: (int) -> None
