@@ -153,7 +153,8 @@ class MainWindow(QMainWindow):
         dialog.set_page_settings(
             page_size=self.pdf_generator.page_size,
             orientation=self.pdf_generator.orientation,
-            margin=self.pdf_generator.margin
+            margin=self.pdf_generator.margin,
+            quality=self.pdf_generator.quality
         )
 
         if dialog.exec_() == SettingsDialog.Accepted:
@@ -161,7 +162,8 @@ class MainWindow(QMainWindow):
             self.pdf_generator.set_page_settings(
                 page_size=settings['page_size'],
                 orientation=settings['orientation'],
-                margin=settings['margin']
+                margin=settings['margin'],
+                quality=settings['quality']
             )
 
             theme = dialog.get_theme_settings()

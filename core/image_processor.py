@@ -39,6 +39,9 @@ class ImageProcessor:
         images = []
         supported_formats = {'.jpg', '.jpeg', '.png', '.webp'}
 
+        if not directory.exists() or not directory.is_dir():
+            return images
+
         for file_path in sorted(directory.iterdir()):
             if file_path.suffix.lower() in supported_formats:
                 img_data = self.load_image(file_path)

@@ -4,12 +4,12 @@
 block_cipher = None
 
 a = Analysis(
-    ['main.py'],
+    ['../main.py'],
     pathex=[],
     binaries=[],
     datas=[
-        ('resources/styles/*.qss', 'resources/styles'),
-        ('resources/icons/*', 'resources/icons'),
+        ('../resources/styles/*.qss', 'resources/styles'),
+        ('../resources/icons/*', 'resources/icons'),
     ],
     hiddenimports=[],
     hookspath=[],
@@ -44,5 +44,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='resources/icons/app.ico'
+    icon='../resources/icons/app.ico'
 )

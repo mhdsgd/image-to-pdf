@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 from PIL import Image
 from reportlab.lib.pagesizes import A4, letter
@@ -18,8 +19,9 @@ class PDFGenerator:
         self.page_size = 'A4'
         self.orientation = 'portrait'
         self.margin = 72  # 1英寸 = 72点
+        self.quality = 'original'  # 压缩质量
 
-    def set_page_settings(self, page_size: str = None, orientation: str = None, margin: int = None):
+    def set_page_settings(self, page_size: str = None, orientation: str = None, margin: int = None, quality: str = None):
         """设置页面参数"""
         if page_size is not None:
             self.page_size = page_size
@@ -27,6 +29,8 @@ class PDFGenerator:
             self.orientation = orientation
         if margin is not None:
             self.margin = margin
+        if quality is not None:
+            self.quality = quality
 
     def calculate_page_dimensions(self) -> Tuple[int, int]:
         """计算页面尺寸"""
@@ -58,9 +62,12 @@ class PDFGenerator:
 
         return x, y, new_width, new_height
 
-    def generate_pdf(self, images: List[Dict], output_path: Path, quality: str = 'original') -> bool:
+    def generate_pdf(self, images: List[Dict], output_path: Path, quality: str = None) -> bool:
         """生成PDF文件"""
         try:
+            if quality is None:
+                quality = self.quality
+
             page_width, page_height = self.calculate_page_dimensions()
 
             c = canvas.Canvas(str(output_path), pagesize=(page_width, page_height))
@@ -84,15 +91,14 @@ class PDFGenerator:
                     img.width, img.height, page_width, page_height, self.margin
                 )
 
-                # 保存临时图片
-                temp_path = Path("temp_image.png")
-                img.save(temp_path)
-
-                # 绘制图片
-                c.drawImage(str(temp_path), x, y, width, height)
-
-                # 删除临时文件
-                temp_path.unlink()
+                # 使用临时文件保存图片（避免污染工作目录）
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                    temp_path = Path(tmp.name)
+                try:
+                    img.save(temp_path)
+                    c.drawImage(str(temp_path), x, y, width, height)
+                finally:
+                    temp_path.unlink()
 
                 # 新建页面
                 c.showPage()
