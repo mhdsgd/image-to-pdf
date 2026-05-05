@@ -1,8 +1,9 @@
 # ui/image_list.py
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QMenu, QAction
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QPixmap, QIcon
+from PyQt5.QtGui import QPixmap, QIcon, QImage
 from typing import List, Dict
+from PIL import Image
 
 
 class ImageListWidget(QListWidget):
@@ -53,8 +54,21 @@ class ImageListWidget(QListWidget):
         item.setText(image_data['filename'])
         item.setData(Qt.UserRole, len(self.images) - 1)
 
-        if image_data.get('thumbnail'):
-            item.setIcon(QIcon(image_data['thumbnail']))
+        thumbnail = image_data.get('thumbnail')
+        if thumbnail is not None:
+            if isinstance(thumbnail, Image.Image):
+                # Convert PIL Image to QPixmap
+                if thumbnail.mode == 'RGB':
+                    qimg = QImage(thumbnail.tobytes(), thumbnail.width, thumbnail.height, QImage.Format_RGB888)
+                elif thumbnail.mode == 'RGBA':
+                    qimg = QImage(thumbnail.tobytes(), thumbnail.width, thumbnail.height, QImage.Format_RGBA8888)
+                else:
+                    thumbnail = thumbnail.convert('RGB')
+                    qimg = QImage(thumbnail.tobytes(), thumbnail.width, thumbnail.height, QImage.Format_RGB888)
+                pixmap = QPixmap.fromImage(qimg)
+                item.setIcon(QIcon(pixmap))
+            else:
+                item.setIcon(QIcon(thumbnail))
 
         self.addItem(item)
 
