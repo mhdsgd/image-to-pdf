@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 *.so
 *.egg-info/
-dist/
+# dist/  # 允许提交exe文件
 build/build/
 *.egg
 
