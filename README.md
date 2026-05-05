@@ -26,7 +26,7 @@
 
 1. 克隆项目
 ```bash
-git clone <repository-url>
+git clone https://github.com/mhdsgd/image-to-pdf.git
 cd image-to-pdf
 ```
 
@@ -39,6 +39,23 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
+
+### 方式三：从源码打包（需要Python环境）
+
+**前提条件：** 需要安装 Python 3.7+ 并添加到系统 PATH。
+
+1. 克隆项目
+```bash
+git clone https://github.com/mhdsgd/image-to-pdf.git
+cd image-to-pdf
+```
+
+2. 运行打包脚本
+```bash
+build.bat
+```
+
+打包完成后，可执行文件位于 `dist/图片合并PDF工具.exe`。
 
 ## 使用说明
 
