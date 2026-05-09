@@ -82,6 +82,12 @@ class SettingsDialog(QDialog):
 
         # 按钮
         button_layout = QHBoxLayout()
+        self.reset_button = QPushButton("恢复默认")
+        self.reset_button.clicked.connect(self.reset_to_defaults)
+        button_layout.addWidget(self.reset_button)
+
+        button_layout.addStretch()
+
         self.ok_button = QPushButton("确定")
         self.ok_button.clicked.connect(self.accept)
         button_layout.addWidget(self.ok_button)
@@ -141,3 +147,14 @@ class SettingsDialog(QDialog):
         index = self.theme_combo.findText(theme)
         if index >= 0:
             self.theme_combo.setCurrentIndex(index)
+
+    def reset_to_defaults(self):
+        """恢复所有设置为默认值"""
+        self.set_page_settings(
+            page_size='A4',
+            orientation='portrait',
+            margin=72,
+            quality='original',
+            parallel_mode='auto'
+        )
+        self.set_theme_settings('light')

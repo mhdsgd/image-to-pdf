@@ -13,6 +13,7 @@ from ui.settings_dialog import SettingsDialog
 from core.image_processor import ImageProcessor
 from core.pdf_generator import PDFGenerator
 from core.sorter import Sorter
+from core.config import load_config, save_config
 
 
 class PDFWorkerThread(QThread):
@@ -50,10 +51,23 @@ class MainWindow(QMainWindow):
         self.pdf_generator = PDFGenerator()
         self.sorter = Sorter()
         self.images = []
-        self.current_theme = 'light'
+
+        # 加载保存的配置
+        self._config = load_config()
+        self.current_theme = self._config.get('theme', 'light')
+        self.pdf_generator.set_page_settings(
+            page_size=self._config.get('page_size'),
+            orientation=self._config.get('orientation'),
+            margin=self._config.get('margin'),
+            quality=self._config.get('quality'),
+            parallel_mode=self._config.get('parallel_mode')
+        )
 
         self.setup_ui()
         self.setup_connections()
+
+        # 应用保存的主题
+        self.apply_theme(self.current_theme)
 
     def setup_ui(self):
         """设置界面"""
@@ -411,6 +425,11 @@ class MainWindow(QMainWindow):
             if theme != self.current_theme:
                 self.current_theme = theme
                 self.apply_theme(theme)
+
+            # 保存配置到文件
+            self._config.update(settings)
+            self._config['theme'] = self.current_theme
+            save_config(self._config)
 
             self.status_bar.showMessage("设置已更新")
 
