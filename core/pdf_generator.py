@@ -1,7 +1,7 @@
-import tempfile
-from pathlib import Path
+from io import BytesIO
 from PIL import Image
 from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from typing import List, Dict, Tuple
 
@@ -62,17 +62,19 @@ class PDFGenerator:
 
         return x, y, new_width, new_height
 
-    def generate_pdf(self, images: List[Dict], output_path: Path, quality: str = None) -> bool:
+    def generate_pdf(self, images: List[Dict], output_path, quality: str = None,
+                      progress_callback=None) -> bool:
         """生成PDF文件"""
         try:
             if quality is None:
                 quality = self.quality
 
             page_width, page_height = self.calculate_page_dimensions()
+            total = len(images)
 
             c = canvas.Canvas(str(output_path), pagesize=(page_width, page_height))
 
-            for img_data in images:
+            for i, img_data in enumerate(images):
                 img = img_data['image']
 
                 # 根据质量设置调整图片
@@ -91,17 +93,15 @@ class PDFGenerator:
                     img.width, img.height, page_width, page_height, self.margin
                 )
 
-                # 使用临时文件保存图片（避免污染工作目录）
-                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                    temp_path = Path(tmp.name)
-                try:
-                    img.save(temp_path)
-                    c.drawImage(str(temp_path), x, y, width, height)
-                finally:
-                    temp_path.unlink()
+                buf = BytesIO()
+                img.save(buf, format='PNG')
+                buf.seek(0)
+                c.drawImage(ImageReader(buf), x, y, width, height)
 
-                # 新建页面
                 c.showPage()
+
+                if progress_callback:
+                    progress_callback(i + 1, total)
 
             c.save()
             return True

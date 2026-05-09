@@ -88,26 +88,25 @@ class PreviewWidget(QWidget):
             self.preview_label.setText("无法预览")
             return
 
-        # 转换PIL Image为QPixmap
-        if img.mode == 'RGB':
-            qimg = QImage(img.tobytes(), img.width, img.height, QImage.Format_RGB888)
-        elif img.mode == 'RGBA':
-            qimg = QImage(img.tobytes(), img.width, img.height, QImage.Format_RGBA8888)
+        # 计算目标显示尺寸，取 label 实际大小与最小值的较大者
+        label_size = self.preview_label.size()
+        max_w = max(int(label_size.width() * self.zoom_level), 400)
+        max_h = max(int(label_size.height() * self.zoom_level), 300)
+
+        # 先用 PIL 缩放到目标尺寸，再转 QPixmap，避免全分辨率转换
+        preview_img = img.copy()
+        preview_img.thumbnail((max_w, max_h), Image.LANCZOS)
+
+        if preview_img.mode == 'RGB':
+            qimg = QImage(preview_img.tobytes(), preview_img.width, preview_img.height, QImage.Format_RGB888)
+        elif preview_img.mode == 'RGBA':
+            qimg = QImage(preview_img.tobytes(), preview_img.width, preview_img.height, QImage.Format_RGBA8888)
         else:
-            img = img.convert('RGB')
-            qimg = QImage(img.tobytes(), img.width, img.height, QImage.Format_RGB888)
+            preview_img = preview_img.convert('RGB')
+            qimg = QImage(preview_img.tobytes(), preview_img.width, preview_img.height, QImage.Format_RGB888)
 
         pixmap = QPixmap.fromImage(qimg)
-
-        # 应用缩放
-        scaled_width = int(pixmap.width() * self.zoom_level)
-        scaled_height = int(pixmap.height() * self.zoom_level)
-        scaled_pixmap = pixmap.scaled(
-            scaled_width, scaled_height,
-            Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
-
-        self.preview_label.setPixmap(scaled_pixmap)
+        self.preview_label.setPixmap(pixmap)
 
     def update_page_label(self):
         """更新页面标签"""

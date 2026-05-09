@@ -1,6 +1,8 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QPushButton, QFileDialog, QMessageBox, QStatusBar)
+                             QPushButton, QFileDialog, QMessageBox, QStatusBar,
+                             QProgressBar)
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication
 from pathlib import Path
 from typing import List
 
@@ -75,6 +77,11 @@ class MainWindow(QMainWindow):
         # 设置按钮
         self.settings_button = QPushButton("设置")
         right_layout.addWidget(self.settings_button)
+
+        # 进度条（默认隐藏）
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        right_layout.addWidget(self.progress_bar)
 
         main_layout.addWidget(right_panel)
 
@@ -195,7 +202,22 @@ class MainWindow(QMainWindow):
     def generate_pdf(self, output_path):
         # type: (Path) -> bool
         """生成PDF"""
-        return self.pdf_generator.generate_pdf(self.images, output_path)
+        def on_progress(current, total):
+            self.progress_bar.setValue(current)
+            self.status_bar.showMessage("正在生成 PDF... {}/{}".format(current, total))
+            QApplication.processEvents()
+
+        self.progress_bar.setMaximum(len(self.images))
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+
+        result = self.pdf_generator.generate_pdf(
+            self.images, output_path,
+            progress_callback=on_progress
+        )
+
+        self.progress_bar.setVisible(False)
+        return result
 
     def on_settings_clicked(self):
         """设置按钮点击事件"""
