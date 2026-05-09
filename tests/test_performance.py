@@ -63,7 +63,7 @@ def test_generate_pdf_100_images(test_images_dir):
     result = generator.generate_pdf(images, output_path)
     elapsed = time.time() - start
 
-    assert result is True
+    assert result[0] is True
     assert output_path.exists()
     assert elapsed < 60, "生成100张图片PDF耗时过长: {:.2f}秒".format(elapsed)
     print("生成100张图片PDF: {:.2f}秒".format(elapsed))
@@ -81,7 +81,7 @@ def test_generate_pdf_500_images(test_images_dir):
     result = generator.generate_pdf(images, output_path)
     elapsed = time.time() - start
 
-    assert result is True
+    assert result[0] is True
     assert output_path.exists()
     assert elapsed < 120, "生成500张图片PDF耗时过长: {:.2f}秒".format(elapsed)
     print("生成500张图片PDF: {:.2f}秒".format(elapsed))

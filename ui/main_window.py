@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QFileDialog, QMessageBox, QStatusBar,
                              QProgressBar, QSplitter)
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtWidgets import QApplication
 from pathlib import Path
 from typing import List, Tuple
@@ -13,6 +13,28 @@ from ui.settings_dialog import SettingsDialog
 from core.image_processor import ImageProcessor
 from core.pdf_generator import PDFGenerator
 from core.sorter import Sorter
+
+
+class PDFWorkerThread(QThread):
+    """后台线程：生成PDF"""
+    progress = pyqtSignal(int, int)  # current, total
+    finished = pyqtSignal(bool, str)  # success, message
+
+    def __init__(self, pdf_generator, images, output_path, parent=None):
+        super().__init__(parent)
+        self.pdf_generator = pdf_generator
+        self.images = images
+        self.output_path = output_path
+
+    def run(self):
+        try:
+            success, msg = self.pdf_generator.generate_pdf(
+                self.images, self.output_path,
+                progress_callback=lambda c, t: self.progress.emit(c, t)
+            )
+            self.finished.emit(success, msg)
+        except Exception as e:
+            self.finished.emit(False, str(e))
 
 
 class MainWindow(QMainWindow):
@@ -294,35 +316,20 @@ class MainWindow(QMainWindow):
         if output_path:
             if not output_path.lower().endswith('.pdf'):
                 output_path += '.pdf'
-            success, message = self.generate_pdf(Path(output_path))
-            if success:
-                if message:
-                    QMessageBox.warning(self, "部分完成", "PDF已生成，但有图片处理失败：\n{}".format(message))
-                else:
-                    QMessageBox.information(self, "成功", "PDF已生成：{}".format(output_path))
-            else:
-                QMessageBox.critical(self, "错误", "PDF生成失败：\n{}".format(message))
+            self._start_pdf_generation(Path(output_path))
 
-    def generate_pdf(self, output_path):
-        # type: (Path) -> Tuple[bool, str]
-        """生成PDF，返回 (成功与否, 错误信息)"""
+    def _start_pdf_generation(self, output_path):
+        # type: (Path) -> None
+        """启动后台线程生成PDF"""
         import math
-        from PyQt5.QtCore import QThread
 
-        def _do_update(current, total):
-            self.progress_bar.setValue(current)
-            self.status_bar.showMessage("正在生成 PDF... {}/{}".format(current, total))
-
-        def on_progress(current, total):
-            if QThread.currentThread() == QApplication.instance().thread():
-                _do_update(current, total)
-            else:
-                QTimer.singleShot(0, lambda c=current, t=total: _do_update(c, t))
-
-        # 防重复点击
+        # 禁用左侧图片列表区域所有操作
+        for btn in (self.import_button, self.archive_button, self.clear_button,
+                    self.thumbnail_toggle_button, self.swap_button,
+                    self.front_button, self.end_button, self.delete_selected_button):
+            btn.setEnabled(False)
+        self.image_list.setEnabled(False)
         self.generate_button.setEnabled(False)
-        self.import_button.setEnabled(False)
-        self.archive_button.setEnabled(False)
 
         # 并行模式按chunk计数，串行模式按图片计数
         img_count = len(self.images)
@@ -333,18 +340,47 @@ class MainWindow(QMainWindow):
         self.progress_bar.setMaximum(progress_max)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
+        self.status_bar.showMessage("正在生成 PDF...")
 
-        try:
-            result = self.pdf_generator.generate_pdf(
-                self.images, output_path,
-                progress_callback=on_progress
-            )
-            return result
-        finally:
-            self.progress_bar.setVisible(False)
-            self.generate_button.setEnabled(True)
-            self.import_button.setEnabled(True)
-            self.archive_button.setEnabled(True)
+        self._pdf_worker = PDFWorkerThread(
+            self.pdf_generator, self.images, output_path
+        )
+        self._pdf_worker.progress.connect(self._on_pdf_progress)
+        self._pdf_worker.finished.connect(
+            lambda success, msg: self._on_pdf_finished(success, msg, str(output_path))
+        )
+        self._pdf_worker.start()
+
+    def _on_pdf_progress(self, current, total):
+        """PDF生成进度回调（主线程）"""
+        self.progress_bar.setValue(current)
+        self.status_bar.showMessage("正在生成 PDF... {}/{}".format(current, total))
+
+    def _on_pdf_finished(self, success, message, output_path):
+        """PDF生成完成回调（主线程）"""
+        self.progress_bar.setVisible(False)
+        for btn in (self.import_button, self.archive_button, self.clear_button,
+                    self.thumbnail_toggle_button, self.swap_button,
+                    self.front_button, self.end_button, self.delete_selected_button):
+            btn.setEnabled(True)
+        self.image_list.setEnabled(True)
+        self.generate_button.setEnabled(True)
+
+        if success:
+            if message:
+                QMessageBox.warning(self, "部分完成", "PDF已生成，但有图片处理失败：\n{}".format(message))
+            else:
+                QMessageBox.information(self, "成功", "PDF已生成：{}".format(output_path))
+        else:
+            QMessageBox.critical(self, "错误", "PDF生成失败：\n{}".format(message))
+
+        self.status_bar.showMessage("共 {} 张图片".format(len(self.images)))
+        self._pdf_worker = None
+
+    def generate_pdf(self, output_path):
+        # type: (Path) -> Tuple[bool, str]
+        """同步生成PDF（供测试调用，UI应使用_start_pdf_generation）"""
+        return self.pdf_generator.generate_pdf(self.images, output_path)
 
     def on_settings_clicked(self):
         """设置按钮点击事件"""
