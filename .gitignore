@@ -35,3 +35,6 @@ Thumbs.db
 # Temp files
 *.tmp
 temp_image.png
+
+# Runtime config
+config.json
