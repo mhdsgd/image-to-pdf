@@ -68,20 +68,23 @@ def test_generate_pdf():
     """测试生成PDF文件"""
     generator = PDFGenerator()
     from PIL import Image
+    from io import BytesIO
 
-    # 创建测试图片
+    # 创建测试图片（使用 raw_data）
     test_images = []
     for i in range(3):
-        img = Image.new('RGB', (200, 200), color='red')
+        buf = BytesIO()
+        Image.new('RGB', (200, 200), color='red').save(buf, format='JPEG')
         test_images.append({
-            'image': img,
+            'raw_data': buf.getvalue(),
             'filename': f'test_{i}.jpg'
         })
 
     output_path = Path("test_output.pdf")
-    result = generator.generate_pdf(test_images, output_path)
+    success, msg = generator.generate_pdf(test_images, output_path)
 
-    assert result == True
+    assert success == True
+    assert msg == ""
     assert output_path.exists()
 
     # 清理

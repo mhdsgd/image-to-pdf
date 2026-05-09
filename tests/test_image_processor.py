@@ -75,7 +75,8 @@ def test_load_image_from_bytes_jpg():
     result = processor.load_image_from_bytes(data, "test.jpg")
     assert result is not None
     assert result['filename'] == "test.jpg"
-    assert result['image'].size == (100, 100)
+    assert 'raw_data' in result
+    assert ImageProcessor.get_image(result).size == (100, 100)
     assert 'thumbnail' in result
 
 
@@ -93,7 +94,8 @@ def test_load_image_from_bytes_png():
     result = processor.load_image_from_bytes(data, "test.png")
     assert result is not None
     assert result['filename'] == "test.png"
-    assert result['image'].size == (100, 100)
+    assert 'raw_data' in result
+    assert ImageProcessor.get_image(result).size == (100, 100)
 
 
 def test_load_image_from_bytes_invalid():

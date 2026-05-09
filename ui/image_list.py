@@ -6,6 +6,21 @@ from typing import List, Dict
 from PIL import Image
 
 
+def pil_to_qpixmap(pil_img):
+    """将 PIL Image 转为 QPixmap"""
+    if pil_img.mode == 'RGB':
+        bpl = pil_img.width * 3
+        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGB888)
+    elif pil_img.mode == 'RGBA':
+        bpl = pil_img.width * 4
+        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGBA8888)
+    else:
+        pil_img = pil_img.convert('RGB')
+        bpl = pil_img.width * 3
+        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGB888)
+    return QPixmap.fromImage(qimg)
+
+
 class ImageListWidget(QListWidget):
     """图片列表组件"""
 
@@ -17,9 +32,9 @@ class ImageListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.images = []  # type: List[Dict]
+        self.show_thumbnail = True  # 是否显示缩略图
         self.setup_ui()
         self.setup_context_menu()
-        self.setup_drag_drop()
 
     def setup_ui(self):
         """设置界面"""
@@ -28,7 +43,8 @@ class ImageListWidget(QListWidget):
         self.setSpacing(10)
         self.setResizeMode(QListWidget.Adjust)
         self.setWrapping(True)
-        self.setSelectionMode(QListWidget.SingleSelection)
+        self.setSelectionMode(QListWidget.ExtendedSelection)
+        self.setDragDropMode(QListWidget.NoDragDrop)  # 禁用拖拽，使用按钮排序
 
         # 连接信号
         self.currentRowChanged.connect(self.on_row_changed)
@@ -38,12 +54,78 @@ class ImageListWidget(QListWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
 
-    def setup_drag_drop(self):
-        """设置拖拽功能"""
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDropIndicatorShown(True)
-        self.setDragDropMode(QListWidget.InternalMove)
+    def set_show_thumbnail(self, show):
+        # type: (bool) -> None
+        """切换缩略图/仅名称显示模式"""
+        self.show_thumbnail = show
+        if show:
+            self.setViewMode(QListWidget.IconMode)
+            self.setIconSize(QPixmap(100, 100).size())
+            self.setSpacing(10)
+            self.setWrapping(True)
+        else:
+            self.setViewMode(QListWidget.ListMode)
+            self.setIconSize(QPixmap(0, 0).size())
+            self.setSpacing(2)
+            self.setWrapping(False)
+        self._rebuild_list()
+
+    def get_selected_rows(self):
+        """获取所有选中项的行号，按升序排列"""
+        return sorted([self.row(item) for item in self.selectedItems()])
+
+    def swap_images(self, row1, row2):
+        """交换两张图片的位置"""
+        if row1 == row2:
+            return
+        self.images[row1], self.images[row2] = self.images[row2], self.images[row1]
+        item1 = self.item(row1)
+        item2 = self.item(row2)
+        icon1, icon2 = item1.icon(), item2.icon()
+        text1, text2 = item1.text(), item2.text()
+        item1.setIcon(icon2)
+        item1.setText(text2)
+        item2.setIcon(icon1)
+        item2.setText(text1)
+        self.update_indices()
+        self.order_changed.emit()
+
+    def move_to_front(self, rows):
+        """将选中的图片移到列表最前，保持相对顺序"""
+        if not rows:
+            return
+        moved = [self.images[i] for i in rows]
+        remaining = [self.images[i] for i in range(len(self.images)) if i not in rows]
+        self.images = moved + remaining
+        self._rebuild_list()
+        self.order_changed.emit()
+
+    def move_to_end(self, rows):
+        """将选中的图片移到列表最后，保持相对顺序"""
+        if not rows:
+            return
+        moved = [self.images[i] for i in rows]
+        remaining = [self.images[i] for i in range(len(self.images)) if i not in rows]
+        self.images = remaining + moved
+        self._rebuild_list()
+        self.order_changed.emit()
+
+    def _rebuild_list(self):
+        """根据 self.images 重建列表 UI"""
+        self.clear()
+        for i, img_data in enumerate(self.images):
+            item = QListWidgetItem()
+            item.setText(img_data['filename'])
+            item.setData(Qt.UserRole, i)
+            if self.show_thumbnail:
+                thumbnail = img_data.get('thumbnail')
+                if thumbnail is not None:
+                    if isinstance(thumbnail, Image.Image):
+                        pixmap = pil_to_qpixmap(thumbnail)
+                        item.setIcon(QIcon(pixmap))
+                    else:
+                        item.setIcon(QIcon(thumbnail))
+            self.addItem(item)
 
     def add_image(self, image_data):
         # type: (Dict) -> None
@@ -54,21 +136,14 @@ class ImageListWidget(QListWidget):
         item.setText(image_data['filename'])
         item.setData(Qt.UserRole, len(self.images) - 1)
 
-        thumbnail = image_data.get('thumbnail')
-        if thumbnail is not None:
-            if isinstance(thumbnail, Image.Image):
-                # Convert PIL Image to QPixmap
-                if thumbnail.mode == 'RGB':
-                    qimg = QImage(thumbnail.tobytes(), thumbnail.width, thumbnail.height, QImage.Format_RGB888)
-                elif thumbnail.mode == 'RGBA':
-                    qimg = QImage(thumbnail.tobytes(), thumbnail.width, thumbnail.height, QImage.Format_RGBA8888)
+        if self.show_thumbnail:
+            thumbnail = image_data.get('thumbnail')
+            if thumbnail is not None:
+                if isinstance(thumbnail, Image.Image):
+                    pixmap = pil_to_qpixmap(thumbnail)
+                    item.setIcon(QIcon(pixmap))
                 else:
-                    thumbnail = thumbnail.convert('RGB')
-                    qimg = QImage(thumbnail.tobytes(), thumbnail.width, thumbnail.height, QImage.Format_RGB888)
-                pixmap = QPixmap.fromImage(qimg)
-                item.setIcon(QIcon(pixmap))
-            else:
-                item.setIcon(QIcon(thumbnail))
+                    item.setIcon(QIcon(thumbnail))
 
         self.addItem(item)
 
@@ -79,6 +154,14 @@ class ImageListWidget(QListWidget):
             self.images.pop(index)
             self.takeItem(index)
             self.update_indices()
+
+    def remove_images_by_rows(self, rows):
+        """批量删除指定行号的图片（rows 应为升序）"""
+        for i in sorted(rows, reverse=True):
+            if 0 <= i < len(self.images):
+                self.images.pop(i)
+                self.takeItem(i)
+        self.update_indices()
 
     def update_indices(self):
         """更新所有项目的索引数据"""
@@ -147,6 +230,7 @@ class ImageListWidget(QListWidget):
             item = self.takeItem(current_row)
             self.insertItem(current_row - 1, item)
             self.setCurrentRow(current_row - 1)
+            self.update_indices()
             self.order_changed.emit()
 
     def move_image_down(self):
@@ -159,4 +243,5 @@ class ImageListWidget(QListWidget):
             item = self.takeItem(current_row)
             self.insertItem(current_row + 1, item)
             self.setCurrentRow(current_row + 1)
+            self.update_indices()
             self.order_changed.emit()

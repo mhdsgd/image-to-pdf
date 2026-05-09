@@ -26,19 +26,45 @@ class ImageProcessor:
     def __init__(self, thumbnail_size: tuple = (100, 100)):
         self.thumbnail_size = thumbnail_size
 
+    @staticmethod
+    def get_image(img_data: Dict) -> Optional[Image.Image]:
+        """按需解压图片（带缓存），避免同时持有所有图片的完整数据"""
+        if '_cached_image' in img_data:
+            return img_data['_cached_image']
+        data = img_data.get('raw_data')
+        if data is None:
+            return None
+        img = Image.open(BytesIO(data))
+        img.load()
+        img_data['_cached_image'] = img
+        return img
+
+    @staticmethod
+    def close_image(img_data: Dict):
+        """释放缓存的 PIL 图片"""
+        cached = img_data.pop('_cached_image', None)
+        if cached is not None:
+            try:
+                cached.close()
+            except Exception:
+                pass
+
     def load_image(self, image_path: Path) -> Optional[Dict]:
-        """加载单张图片"""
+        """加载单张图片（仅存储原始字节，按需解压）"""
         try:
             if not image_path.exists():
                 return None
 
-            img = Image.open(image_path)
+            raw_data = image_path.read_bytes()
+            img = Image.open(BytesIO(raw_data))
+            img.load()
             thumbnail = self.generate_thumbnail(img)
+            img.close()
 
             return {
                 'path': image_path,
                 'filename': image_path.name,
-                'image': img,
+                'raw_data': raw_data,
                 'thumbnail': thumbnail
             }
         except Exception as e:
@@ -47,8 +73,14 @@ class ImageProcessor:
 
     def generate_thumbnail(self, image: Image.Image) -> Image.Image:
         """生成缩略图"""
-        thumbnail = image.copy()
-        thumbnail.thumbnail(self.thumbnail_size)
+        # 用 reduce 直接缩小，避免 copy() 产生完整副本
+        w, h = image.size
+        tw, th = self.thumbnail_size
+        factor = max(1, min(w // tw, h // th))
+        if factor > 1:
+            thumbnail = image.reduce(factor)
+        else:
+            thumbnail = image.copy()
         return thumbnail
 
     def load_images_from_directory(self, directory: Path) -> List[Dict]:
@@ -66,53 +98,57 @@ class ImageProcessor:
 
         return images
 
-    def load_images_from_files(self, file_paths: List[Path]) -> List[Dict]:
+    def load_images_from_files(self, file_paths: List[Path], progress_callback=None) -> List[Dict]:
         """从文件列表加载图片"""
         images = []
+        total = len(file_paths)
 
-        for file_path in file_paths:
+        for i, file_path in enumerate(file_paths):
             img_data = self.load_image(file_path)
             if img_data:
                 images.append(img_data)
+            if progress_callback:
+                progress_callback(i + 1, total)
 
         return images
 
     def load_image_from_bytes(self, data: bytes, filename: str) -> Optional[Dict]:
-        """从字节数据加载单张图片"""
+        """从字节数据加载单张图片（仅存储原始字节，按需解压）"""
         try:
             img = Image.open(BytesIO(data))
-            img.load()  # 确保数据被读取，因为 BytesIO 在关闭后不可用
+            img.load()
             thumbnail = self.generate_thumbnail(img)
+            img.close()
 
             return {
                 'path': Path(filename),
                 'filename': filename,
-                'image': img,
+                'raw_data': data,
                 'thumbnail': thumbnail
             }
         except Exception as e:
             print(f"从字节加载图片失败: {filename}, 错误: {e}")
             return None
 
-    def load_images_from_archive(self, archive_path: Path) -> List[Dict]:
+    def load_images_from_archive(self, archive_path: Path, progress_callback=None) -> List[Dict]:
         """从压缩包加载所有图片"""
         images = []
         suffix = archive_path.suffix.lower()
 
         if suffix == '.zip':
-            images = self._load_from_zip(archive_path)
+            images = self._load_from_zip(archive_path, progress_callback)
         elif suffix == '.7z':
             if not HAS_PY7ZR:
                 print("未安装 py7zr，无法处理 7z 文件")
                 return images
-            images = self._load_from_7z(archive_path)
+            images = self._load_from_7z(archive_path, progress_callback)
         else:
             print(f"不支持的压缩格式: {suffix}")
             return images
 
         return images
 
-    def _load_from_zip(self, archive_path: Path) -> List[Dict]:
+    def _load_from_zip(self, archive_path: Path, progress_callback=None) -> List[Dict]:
         """从 zip 文件加载图片"""
         images = []
         try:
@@ -138,8 +174,9 @@ class ImageProcessor:
 
                 print(f"[DEBUG] 找到 {len(image_files)} 个图片文件")
                 image_files.sort(key=natural_sort_key)
+                total = len(image_files)
 
-                for filename in image_files:
+                for i, filename in enumerate(image_files):
                     data = zf.read(filename)
                     # 处理可能的目录前缀，只保留文件名
                     try:
@@ -150,31 +187,47 @@ class ImageProcessor:
                     img_data = self.load_image_from_bytes(data, display_name)
                     if img_data:
                         images.append(img_data)
+                    if progress_callback:
+                        progress_callback(i + 1, total)
         except Exception as e:
             print(f"读取 zip 文件失败: {archive_path}, 错误: {e}")
 
         return images
 
-    def _load_from_7z(self, archive_path: Path) -> List[Dict]:
+    def _load_from_7z(self, archive_path: Path, progress_callback=None) -> List[Dict]:
         """从 7z 文件加载图片"""
         images = []
         try:
             with py7zr.SevenZipFile(archive_path, 'r') as sz:
-                result = sz.readall()
-                # 收集图片文件并自然排序
-                image_entries = []
-                for name, bio in result.items():
-                    if Path(name).suffix.lower() in SUPPORTED_IMAGE_FORMATS:
-                        image_entries.append((name, bio))
+                # 先获取文件列表，只读取图片文件
+                file_list = sz.list()
+                image_names = []
+                for info in file_list:
+                    if info.is_directory:
+                        continue
+                    if Path(info.filename).suffix.lower() in SUPPORTED_IMAGE_FORMATS:
+                        image_names.append(info.filename)
 
-                image_entries.sort(key=lambda x: natural_sort_key(x[0]))
+                image_names.sort(key=natural_sort_key)
 
-                for filename, bio in image_entries:
+                if not image_names:
+                    return images
+
+                # 只解压图片文件
+                result = sz.read(image_names)
+                total = len(image_names)
+                for i, filename in enumerate(image_names):
+                    bio = result.get(filename)
+                    if bio is None:
+                        continue
                     data = bio.read()
+                    bio.close()
                     display_name = Path(filename).name
                     img_data = self.load_image_from_bytes(data, display_name)
                     if img_data:
                         images.append(img_data)
+                    if progress_callback:
+                        progress_callback(i + 1, total)
         except Exception as e:
             print(f"读取 7z 文件失败: {archive_path}, 错误: {e}")
 

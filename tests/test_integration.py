@@ -56,8 +56,9 @@ def test_full_workflow(app):
         assert window.preview.current_page == 2
 
         # 4. 测试生成PDF
-        result = window.generate_pdf(output_path)
-        assert result is True
+        success, msg = window.generate_pdf(output_path)
+        assert success is True
+        assert msg == ""
         assert output_path.exists()
         assert output_path.stat().st_size > 0
 
@@ -85,9 +86,9 @@ def test_error_handling_empty_pdf(app):
 
     try:
         # 当前实现中，空列表仍会创建一个空PDF并返回True
-        result = window.generate_pdf(output_path)
+        success, msg = window.generate_pdf(output_path)
         # generate_pdf creates an empty PDF even with no images
-        assert result is True
+        assert success is True
         assert output_path.exists()
 
     finally:
@@ -178,8 +179,8 @@ def test_generate_pdf_with_multiple_images(app):
         window.import_images(paths)
         assert window.image_list.get_image_count() == 3
 
-        result = window.generate_pdf(output_path)
-        assert result is True
+        success, msg = window.generate_pdf(output_path)
+        assert success is True
         assert output_path.exists()
 
         # 验证PDF文件非空且包含有效内容

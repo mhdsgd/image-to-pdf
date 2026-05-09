@@ -59,13 +59,15 @@ def test_generate_pdf(app):
     """测试生成功能"""
     window = MainWindow()
 
-    # 模拟图片数据
+    # 模拟图片数据（使用 raw_data 代替 image）
     from PIL import Image
+    from io import BytesIO
     images = []
     for i in range(3):
-        img = Image.new('RGB', (100, 100), color='red')
+        buf = BytesIO()
+        Image.new('RGB', (100, 100), color='red').save(buf, format='JPEG')
         images.append({
-            'image': img,
+            'raw_data': buf.getvalue(),
             'filename': 'test_{}.jpg'.format(i)
         })
 
@@ -74,9 +76,10 @@ def test_generate_pdf(app):
     # 测试生成
     from pathlib import Path
     output_path = Path("test_output.pdf")
-    result = window.generate_pdf(output_path)
+    success, msg = window.generate_pdf(output_path)
 
-    assert result == True
+    assert success == True
+    assert msg == ""
     assert output_path.exists()
 
     # 清理
