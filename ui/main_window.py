@@ -184,6 +184,8 @@ class MainWindow(QMainWindow):
         )
 
         if output_path:
+            if not output_path.lower().endswith('.pdf'):
+                output_path += '.pdf'
             result = self.generate_pdf(Path(output_path))
             if result:
                 QMessageBox.information(self, "成功", "PDF已生成：{}".format(output_path))
