@@ -106,8 +106,7 @@ class MainWindow(QMainWindow):
         """导入按钮点击事件"""
         file_paths, _ = QFileDialog.getOpenFileNames(
             self, "选择图片", "",
-            "图片文件 (*.jpg *.jpeg *.png *.webp)",
-            options=QFileDialog.DontUseNativeDialog
+            "图片文件 (*.jpg *.jpeg *.png *.webp)"
         )
 
         if file_paths:
@@ -134,8 +133,7 @@ class MainWindow(QMainWindow):
         archive_filter = "压缩包 ({})".format(" ".join("*" + ext for ext in SUPPORTED_ARCHIVE_FORMATS))
         file_path, _ = QFileDialog.getOpenFileName(
             self, "选择压缩包", "",
-            archive_filter,
-            options=QFileDialog.DontUseNativeDialog
+            archive_filter
         )
 
         if file_path:
@@ -186,8 +184,7 @@ class MainWindow(QMainWindow):
 
         output_path, _ = QFileDialog.getSaveFileName(
             self, "保存PDF", "",
-            "PDF文件 (*.pdf)",
-            options=QFileDialog.DontUseNativeDialog
+            "PDF文件 (*.pdf)"
         )
 
         if output_path:
