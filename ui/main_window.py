@@ -4,6 +4,7 @@ from PyQt5.QtCore import Qt
 from pathlib import Path
 from typing import List
 
+from core.image_processor import SUPPORTED_ARCHIVE_FORMATS
 from ui.image_list import ImageListWidget
 from ui.preview import PreviewWidget
 from ui.settings_dialog import SettingsDialog
@@ -45,6 +46,9 @@ class MainWindow(QMainWindow):
         self.import_button = QPushButton("导入图片")
         toolbar_layout.addWidget(self.import_button)
 
+        self.archive_button = QPushButton("导入压缩包")
+        toolbar_layout.addWidget(self.archive_button)
+
         self.clear_button = QPushButton("清空列表")
         toolbar_layout.addWidget(self.clear_button)
 
@@ -82,6 +86,7 @@ class MainWindow(QMainWindow):
     def setup_connections(self):
         """设置信号连接"""
         self.import_button.clicked.connect(self.on_import_clicked)
+        self.archive_button.clicked.connect(self.on_archive_import_clicked)
         self.clear_button.clicked.connect(self.on_clear_clicked)
         self.generate_button.clicked.connect(self.on_generate_clicked)
         self.settings_button.clicked.connect(self.on_settings_clicked)
@@ -115,6 +120,49 @@ class MainWindow(QMainWindow):
 
             self.update_preview()
             self.status_bar.showMessage("已导入 {} 张图片".format(len(new_images)))
+
+    def on_archive_import_clicked(self):
+        """导入压缩包按钮点击事件"""
+        # 构建文件过滤器
+        archive_filter = "压缩包 ({})".format(" ".join("*" + ext for ext in SUPPORTED_ARCHIVE_FORMATS))
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择压缩包", "",
+            archive_filter,
+            options=QFileDialog.DontUseNativeDialog
+        )
+
+        if file_path:
+            self.import_from_archive(Path(file_path))
+
+    def import_from_archive(self, archive_path):
+        # type: (Path) -> None
+        """从压缩包导入图片"""
+        import io
+        import sys
+
+        self.status_bar.showMessage("正在解压: {}".format(archive_path.name))
+
+        # 捕获 print 输出用于调试
+        old_stdout = sys.stdout
+        sys.stdout = buffer = io.StringIO()
+
+        new_images = self.image_processor.load_images_from_archive(archive_path)
+
+        sys.stdout = old_stdout
+        debug_output = buffer.getvalue()
+
+        if new_images:
+            self.images.extend(new_images)
+
+            for img_data in new_images:
+                self.image_list.add_image(img_data)
+
+            self.update_preview()
+            self.status_bar.showMessage("从压缩包导入了 {} 张图片".format(len(new_images)))
+        else:
+            self.status_bar.showMessage("压缩包中未找到图片")
+            detail = "压缩包中未找到支持的图片格式\n\n调试信息:\n{}".format(debug_output) if debug_output else "压缩包中未找到支持的图片格式"
+            QMessageBox.warning(self, "警告", detail)
 
     def on_clear_clicked(self):
         """清空按钮点击事件"""
