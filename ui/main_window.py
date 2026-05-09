@@ -50,6 +50,7 @@ class MainWindow(QMainWindow):
         self.pdf_generator = PDFGenerator()
         self.sorter = Sorter()
         self.images = []
+        self.current_theme = 'light'
 
         self.setup_ui()
         self.setup_connections()
@@ -391,8 +392,10 @@ class MainWindow(QMainWindow):
             page_size=self.pdf_generator.page_size,
             orientation=self.pdf_generator.orientation,
             margin=self.pdf_generator.margin,
-            quality=self.pdf_generator.quality
+            quality=self.pdf_generator.quality,
+            parallel_mode=self.pdf_generator.parallel_mode
         )
+        dialog.set_theme_settings(self.current_theme)
 
         if dialog.exec_() == SettingsDialog.Accepted:
             settings = dialog.get_page_settings()
@@ -400,11 +403,14 @@ class MainWindow(QMainWindow):
                 page_size=settings['page_size'],
                 orientation=settings['orientation'],
                 margin=settings['margin'],
-                quality=settings['quality']
+                quality=settings['quality'],
+                parallel_mode=settings['parallel_mode']
             )
 
             theme = dialog.get_theme_settings()
-            self.apply_theme(theme)
+            if theme != self.current_theme:
+                self.current_theme = theme
+                self.apply_theme(theme)
 
             self.status_bar.showMessage("设置已更新")
 

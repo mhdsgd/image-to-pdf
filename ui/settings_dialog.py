@@ -53,6 +53,18 @@ class SettingsDialog(QDialog):
         quality_layout.addWidget(self.quality_combo)
         page_layout.addLayout(quality_layout)
 
+        # 并行任务数
+        parallel_layout = QHBoxLayout()
+        parallel_layout.addWidget(QLabel("并行任务:"))
+        self.parallel_combo = QComboBox()
+        self.parallel_combo.addItem("最快（全部核心）", "auto")
+        self.parallel_combo.addItem("较快", "high")
+        self.parallel_combo.addItem("中等", "medium")
+        self.parallel_combo.addItem("低（单核）", "low")
+        self.parallel_combo.setToolTip("大批量图片（>30张）生成PDF时的并行进程数")
+        parallel_layout.addWidget(self.parallel_combo)
+        page_layout.addLayout(parallel_layout)
+
         layout.addWidget(page_group)
 
         # 主题设置组
@@ -87,12 +99,13 @@ class SettingsDialog(QDialog):
             'page_size': self.page_size_combo.currentText(),
             'orientation': self.orientation_combo.currentText(),
             'margin': self.margin_spin.value(),
-            'quality': self.quality_combo.currentText()
+            'quality': self.quality_combo.currentText(),
+            'parallel_mode': self.parallel_combo.currentData()
         }
 
     def set_page_settings(self, page_size=None, orientation=None,
-                         margin=None, quality=None):
-        # type: (str, str, int, str) -> None
+                         margin=None, quality=None, parallel_mode=None):
+        # type: (str, str, int, str, str) -> None
         """设置页面参数"""
         if page_size is not None:
             index = self.page_size_combo.findText(page_size)
@@ -111,6 +124,11 @@ class SettingsDialog(QDialog):
             index = self.quality_combo.findText(quality)
             if index >= 0:
                 self.quality_combo.setCurrentIndex(index)
+
+        if parallel_mode is not None:
+            index = self.parallel_combo.findData(parallel_mode)
+            if index >= 0:
+                self.parallel_combo.setCurrentIndex(index)
 
     def get_theme_settings(self):
         # type: () -> str

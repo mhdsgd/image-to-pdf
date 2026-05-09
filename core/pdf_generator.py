@@ -111,8 +111,9 @@ class PDFGenerator:
         self.orientation = 'portrait'
         self.margin = 72
         self.quality = 'original'
+        self.parallel_mode = 'auto'
 
-    def set_page_settings(self, page_size=None, orientation=None, margin=None, quality=None):
+    def set_page_settings(self, page_size=None, orientation=None, margin=None, quality=None, parallel_mode=None):
         if page_size is not None:
             self.page_size = page_size
         if orientation is not None:
@@ -121,6 +122,8 @@ class PDFGenerator:
             self.margin = margin
         if quality is not None:
             self.quality = quality
+        if parallel_mode is not None:
+            self.parallel_mode = parallel_mode
 
     def calculate_page_dimensions(self):
         base_width, base_height = self.PAGE_SIZES.get(self.page_size, A4)
@@ -283,7 +286,16 @@ class PDFGenerator:
             if progress_callback:
                 progress_callback(completed[0], chunk_count)
 
-        num_processes = min(multiprocessing.cpu_count(), chunk_count)
+        cpu_count = multiprocessing.cpu_count() or 1
+        mode = getattr(self, 'parallel_mode', 'auto')
+        if mode == 'low':
+            num_processes = 1
+        elif mode == 'medium':
+            num_processes = min(max(cpu_count // 2, 1), chunk_count)
+        elif mode == 'high':
+            num_processes = min(max(cpu_count - 1, 1), chunk_count)
+        else:  # auto
+            num_processes = min(cpu_count, chunk_count)
 
         try:
             pool = multiprocessing.Pool(processes=num_processes)
