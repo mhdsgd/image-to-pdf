@@ -38,6 +38,9 @@ class PDFWorkerThread(QThread):
             self.finished.emit(False, str(e))
 
 
+MAX_IMAGE_COUNT = 1000
+
+
 class MainWindow(QMainWindow):
     """主窗口"""
 
@@ -187,12 +190,12 @@ class MainWindow(QMainWindow):
         )
 
         if file_paths:
-            if len(file_paths) > 1000:
-                QMessageBox.warning(self, "警告", "一次最多导入1000张图片，当前选择了{}张".format(len(file_paths)))
+            if len(file_paths) > MAX_IMAGE_COUNT:
+                QMessageBox.warning(self, "警告", "一次最多导入{}张图片，当前选择了{}张".format(MAX_IMAGE_COUNT, len(file_paths)))
                 return
             total = len(self.images) + len(file_paths)
-            if total > 1000:
-                QMessageBox.warning(self, "警告", "导入后总数将超过1000张（当前{}张 + 新增{}张），请减少选择数量".format(len(self.images), len(file_paths)))
+            if total > MAX_IMAGE_COUNT:
+                QMessageBox.warning(self, "警告", "导入后总数将超过{}张（当前{}张 + 新增{}张），请减少选择数量".format(MAX_IMAGE_COUNT, len(self.images), len(file_paths)))
                 return
             paths = [Path(fp) for fp in file_paths]
             self.import_images(paths)
@@ -289,12 +292,12 @@ class MainWindow(QMainWindow):
             self.archive_button.setEnabled(True)
 
         if new_images:
-            if len(new_images) > 1000:
-                QMessageBox.warning(self, "警告", "压缩包中图片数量超过1000张（共{}张），请减少图片数量后重试".format(len(new_images)))
+            if len(new_images) > MAX_IMAGE_COUNT:
+                QMessageBox.warning(self, "警告", "压缩包中图片数量超过{}张（共{}张），请减少图片数量后重试".format(MAX_IMAGE_COUNT, len(new_images)))
                 return
             total = len(self.images) + len(new_images)
-            if total > 1000:
-                QMessageBox.warning(self, "警告", "导入后总数将超过1000张（当前{}张 + 压缩包{}张），请先清空列表或减少压缩包内图片数量".format(len(self.images), len(new_images)))
+            if total > MAX_IMAGE_COUNT:
+                QMessageBox.warning(self, "警告", "导入后总数将超过{}张（当前{}张 + 压缩包{}张），请先清空列表或减少压缩包内图片数量".format(MAX_IMAGE_COUNT, len(self.images), len(new_images)))
                 return
             self.images.extend(new_images)
 

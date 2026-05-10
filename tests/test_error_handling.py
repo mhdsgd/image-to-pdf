@@ -1,6 +1,7 @@
 # tests/test_error_handling.py
 import pytest
 import shutil
+import tempfile
 from pathlib import Path
 from PIL import Image
 from core.image_processor import ImageProcessor
@@ -159,11 +160,19 @@ def test_remove_image_invalid_index():
 
 
 def _make_image_data(size, filename='test.jpg'):
-    """创建测试用图片数据字典（使用 raw_data）"""
+    """创建测试用图片数据字典（写入临时文件）"""
     from io import BytesIO
     buf = BytesIO()
     Image.new('RGB', size).save(buf, format='JPEG')
-    return {'raw_data': buf.getvalue(), 'filename': filename}
+    suffix = Path(filename).suffix or '.jpg'
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix='img2pdf_')
+    try:
+        tmp.write(buf.getvalue())
+        tmp.flush()
+        temp_path = Path(tmp.name)
+    finally:
+        tmp.close()
+    return {'_source_path': temp_path, '_temp_file': True, 'filename': filename}
 
 
 def test_generate_pdf_with_different_qualities(tmp_path):
@@ -248,6 +257,19 @@ def test_load_images_from_files_mixed(tmp_path):
     assert result[0]['filename'] == 'valid.jpg'
 
 
+def _make_corrupt_data(data, filename='corrupt.jpg'):
+    """创建包含损坏数据的图片数据字典（写入临时文件）"""
+    suffix = Path(filename).suffix or '.jpg'
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix='img2pdf_')
+    try:
+        tmp.write(data)
+        tmp.flush()
+        temp_path = Path(tmp.name)
+    finally:
+        tmp.close()
+    return {'_source_path': temp_path, '_temp_file': True, 'filename': filename}
+
+
 def test_generate_pdf_partial_failure(tmp_path):
     """测试部分图片失败时仍能生成PDF"""
     generator = PDFGenerator()
@@ -255,7 +277,7 @@ def test_generate_pdf_partial_failure(tmp_path):
     # 混合有效和无效图片
     images = [
         _make_image_data((200, 200), 'valid1.jpg'),
-        {'raw_data': b'not an image', 'filename': 'corrupt.jpg'},
+        _make_corrupt_data(b'not an image', 'corrupt.jpg'),
         _make_image_data((200, 200), 'valid2.jpg'),
     ]
 
@@ -274,8 +296,8 @@ def test_generate_pdf_all_fail(tmp_path):
     generator = PDFGenerator()
 
     images = [
-        {'raw_data': b'bad1', 'filename': 'bad1.jpg'},
-        {'raw_data': b'bad2', 'filename': 'bad2.jpg'},
+        _make_corrupt_data(b'bad1', 'bad1.jpg'),
+        _make_corrupt_data(b'bad2', 'bad2.jpg'),
     ]
 
     output_path = tmp_path / "all_fail.pdf"
@@ -335,8 +357,8 @@ def test_generate_pdf_parallel_partial_failure(tmp_path):
 
     images = [_make_image_data((100, 100), 'valid_{}.jpg'.format(i)) for i in range(12)]
     # 在中间插入损坏图片
-    images.insert(3, {'raw_data': b'corrupt', 'filename': 'bad1.jpg'})
-    images.insert(8, {'raw_data': b'corrupt', 'filename': 'bad2.jpg'})
+    images.insert(3, _make_corrupt_data(b'corrupt', 'bad1.jpg'))
+    images.insert(8, _make_corrupt_data(b'corrupt', 'bad2.jpg'))
 
     output_path = tmp_path / "parallel_partial.pdf"
     success, msg = generator.generate_pdf(images, output_path)
@@ -353,7 +375,7 @@ def test_generate_pdf_parallel_all_fail(tmp_path):
     generator = PDFGenerator()
     generator.CHUNK_SIZE = 5
 
-    images = [{'raw_data': b'bad', 'filename': 'bad_{}.jpg'.format(i)} for i in range(12)]
+    images = [_make_corrupt_data(b'bad', 'bad_{}.jpg'.format(i)) for i in range(12)]
 
     output_path = tmp_path / "parallel_all_fail.pdf"
     success, msg = generator.generate_pdf(images, output_path)

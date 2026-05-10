@@ -1,4 +1,5 @@
 import pytest
+import tempfile
 from pathlib import Path
 from core.pdf_generator import PDFGenerator
 
@@ -70,13 +71,22 @@ def test_generate_pdf():
     from PIL import Image
     from io import BytesIO
 
-    # 创建测试图片（使用 raw_data）
+    # 创建测试图片（写入临时文件）
     test_images = []
     for i in range(3):
         buf = BytesIO()
         Image.new('RGB', (200, 200), color='red').save(buf, format='JPEG')
+        suffix = '.jpg'
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix='img2pdf_')
+        try:
+            tmp.write(buf.getvalue())
+            tmp.flush()
+            temp_path = Path(tmp.name)
+        finally:
+            tmp.close()
         test_images.append({
-            'raw_data': buf.getvalue(),
+            '_source_path': temp_path,
+            '_temp_file': True,
             'filename': f'test_{i}.jpg'
         })
 
@@ -89,3 +99,6 @@ def test_generate_pdf():
 
     # 清理
     output_path.unlink()
+    for img in test_images:
+        from core.image_processor import ImageProcessor
+        ImageProcessor.close_image(img)

@@ -1,4 +1,6 @@
 import pytest
+import tempfile
+from pathlib import Path
 from PyQt5.QtWidgets import QApplication
 from ui.main_window import MainWindow
 
@@ -59,22 +61,30 @@ def test_generate_pdf(app):
     """测试生成功能"""
     window = MainWindow()
 
-    # 模拟图片数据（使用 raw_data 代替 image）
+    # 模拟图片数据（写入临时文件）
     from PIL import Image
     from io import BytesIO
+    from core.image_processor import ImageProcessor
     images = []
     for i in range(3):
         buf = BytesIO()
         Image.new('RGB', (100, 100), color='red').save(buf, format='JPEG')
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg', prefix='img2pdf_')
+        try:
+            tmp.write(buf.getvalue())
+            tmp.flush()
+            temp_path = Path(tmp.name)
+        finally:
+            tmp.close()
         images.append({
-            'raw_data': buf.getvalue(),
+            '_source_path': temp_path,
+            '_temp_file': True,
             'filename': 'test_{}.jpg'.format(i)
         })
 
     window.images = images
 
     # 测试生成
-    from pathlib import Path
     output_path = Path("test_output.pdf")
     success, msg = window.generate_pdf(output_path)
 
@@ -84,6 +94,8 @@ def test_generate_pdf(app):
 
     # 清理
     output_path.unlink()
+    for img in images:
+        ImageProcessor.close_image(img)
 
 
 def test_apply_theme_light(app):

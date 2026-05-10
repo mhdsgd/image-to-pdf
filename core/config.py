@@ -39,5 +39,8 @@ def load_config():
 def save_config(config):
     """保存配置到文件"""
     path = _get_config_path()
-    with open(str(path), 'w', encoding='utf-8') as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
+    try:
+        with open(str(path), 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+    except OSError:
+        pass

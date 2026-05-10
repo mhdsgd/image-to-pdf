@@ -1,24 +1,10 @@
 # ui/image_list.py
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QMenu, QAction
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QPixmap, QIcon, QImage
+from PyQt5.QtGui import QPixmap, QIcon
 from typing import List, Dict
 from PIL import Image
-
-
-def pil_to_qpixmap(pil_img):
-    """将 PIL Image 转为 QPixmap"""
-    if pil_img.mode == 'RGB':
-        bpl = pil_img.width * 3
-        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGB888)
-    elif pil_img.mode == 'RGBA':
-        bpl = pil_img.width * 4
-        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGBA8888)
-    else:
-        pil_img = pil_img.convert('RGB')
-        bpl = pil_img.width * 3
-        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGB888)
-    return QPixmap.fromImage(qimg)
+from ui.utils import pil_to_qpixmap
 
 
 class ImageListWidget(QListWidget):
@@ -117,14 +103,9 @@ class ImageListWidget(QListWidget):
             item = QListWidgetItem()
             item.setText(img_data['filename'])
             item.setData(Qt.UserRole, i)
-            if self.show_thumbnail:
-                thumbnail = img_data.get('thumbnail')
-                if thumbnail is not None:
-                    if isinstance(thumbnail, Image.Image):
-                        pixmap = pil_to_qpixmap(thumbnail)
-                        item.setIcon(QIcon(pixmap))
-                    else:
-                        item.setIcon(QIcon(thumbnail))
+            icon = self._create_icon(img_data)
+            if icon is not None:
+                item.setIcon(icon)
             self.addItem(item)
 
     def add_image(self, image_data):
@@ -135,16 +116,9 @@ class ImageListWidget(QListWidget):
         item = QListWidgetItem()
         item.setText(image_data['filename'])
         item.setData(Qt.UserRole, len(self.images) - 1)
-
-        if self.show_thumbnail:
-            thumbnail = image_data.get('thumbnail')
-            if thumbnail is not None:
-                if isinstance(thumbnail, Image.Image):
-                    pixmap = pil_to_qpixmap(thumbnail)
-                    item.setIcon(QIcon(pixmap))
-                else:
-                    item.setIcon(QIcon(thumbnail))
-
+        icon = self._create_icon(image_data)
+        if icon is not None:
+            item.setIcon(icon)
         self.addItem(item)
 
     def remove_image(self, index):
@@ -173,6 +147,17 @@ class ImageListWidget(QListWidget):
         # type: () -> int
         """获取图片数量"""
         return len(self.images)
+
+    def _create_icon(self, image_data):
+        """根据图片数据创建 QIcon（缩略图模式下）"""
+        if not self.show_thumbnail:
+            return None
+        thumbnail = image_data.get('thumbnail')
+        if thumbnail is None:
+            return None
+        if isinstance(thumbnail, Image.Image):
+            return QIcon(pil_to_qpixmap(thumbnail))
+        return QIcon(thumbnail)
 
     def clear_images(self):
         """清空图片列表"""

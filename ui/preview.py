@@ -1,25 +1,11 @@
 # ui/preview.py
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
-from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QTimer
-from PyQt5.QtGui import QPixmap, QImage, QCursor
+from PyQt5.QtCore import Qt, pyqtSignal, QEvent
+from PyQt5.QtGui import QPixmap, QCursor
 from typing import List, Dict
 from PIL import Image
 from core.image_processor import ImageProcessor
-
-
-def _pil_to_qpixmap(pil_img):
-    """PIL Image -> QPixmap"""
-    if pil_img.mode == 'RGB':
-        bpl = pil_img.width * 3
-        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGB888)
-    elif pil_img.mode == 'RGBA':
-        bpl = pil_img.width * 4
-        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGBA8888)
-    else:
-        pil_img = pil_img.convert('RGB')
-        bpl = pil_img.width * 3
-        qimg = QImage(pil_img.tobytes(), pil_img.width, pil_img.height, bpl, QImage.Format_RGB888)
-    return QPixmap.fromImage(qimg)
+from ui.utils import pil_to_qpixmap
 
 
 class PreviewWidget(QWidget):
@@ -101,7 +87,7 @@ class PreviewWidget(QWidget):
         # 释放上一页的缓存（保留当前页供 _restore_cursor / _handle_wheel 使用）
         if self._orig_pixmap_page >= 0 and self._orig_pixmap_page != self.current_page:
             self._release_cached_image(self._orig_pixmap_page)
-        self._orig_pixmap = _pil_to_qpixmap(img)
+        self._orig_pixmap = pil_to_qpixmap(img)
         self._orig_pixmap_page = self.current_page
         self._scaled_pixmap = None
         self._scaled_key = None

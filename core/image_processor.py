@@ -2,6 +2,7 @@ from pathlib import Path
 from PIL import Image
 from typing import List, Dict, Optional
 from io import BytesIO
+import tempfile
 import zipfile
 import re
 
@@ -20,6 +21,14 @@ def natural_sort_key(s):
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', str(s))]
 
 
+def _decode_zip_name(raw_name: str) -> str:
+    """解码 zip 文件名（处理 CP437 → GBK 中文编码问题）"""
+    try:
+        return raw_name.encode('cp437').decode('gbk')
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return raw_name
+
+
 class ImageProcessor:
     """图片处理器"""
 
@@ -28,11 +37,15 @@ class ImageProcessor:
 
     @staticmethod
     def get_image(img_data: Dict) -> Optional[Image.Image]:
-        """按需解压图片（带缓存），避免同时持有所有图片的完整数据"""
+        """按需解压图片（带缓存），从磁盘按需读取原始数据"""
         if '_cached_image' in img_data:
             return img_data['_cached_image']
-        data = img_data.get('raw_data')
-        if data is None:
+        source_path = img_data.get('_source_path')
+        if source_path is None:
+            return None
+        try:
+            data = Path(source_path).read_bytes()
+        except (FileNotFoundError, OSError):
             return None
         img = Image.open(BytesIO(data))
         img.load()
@@ -41,22 +54,28 @@ class ImageProcessor:
 
     @staticmethod
     def close_image(img_data: Dict):
-        """释放缓存的 PIL 图片"""
+        """释放缓存的 PIL 图片，并清理临时文件（如果有）"""
         cached = img_data.pop('_cached_image', None)
         if cached is not None:
             try:
                 cached.close()
             except Exception:
                 pass
+        if img_data.pop('_temp_file', False):
+            source = img_data.get('_source_path')
+            if source is not None:
+                try:
+                    Path(source).unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     def load_image(self, image_path: Path) -> Optional[Dict]:
-        """加载单张图片（仅存储原始字节，按需解压）"""
+        """加载单张图片（仅存储文件路径和缩略图，原始数据按需从磁盘读取）"""
         try:
             if not image_path.exists():
                 return None
 
-            raw_data = image_path.read_bytes()
-            img = Image.open(BytesIO(raw_data))
+            img = Image.open(image_path)
             img.load()
             thumbnail = self.generate_thumbnail(img)
             img.close()
@@ -64,7 +83,7 @@ class ImageProcessor:
             return {
                 'path': image_path,
                 'filename': image_path.name,
-                'raw_data': raw_data,
+                '_source_path': image_path,
                 'thumbnail': thumbnail
             }
         except Exception as e:
@@ -73,14 +92,10 @@ class ImageProcessor:
 
     def generate_thumbnail(self, image: Image.Image) -> Image.Image:
         """生成缩略图"""
-        # 用 reduce 直接缩小，避免 copy() 产生完整副本
         w, h = image.size
         tw, th = self.thumbnail_size
         factor = max(1, min(w // tw, h // th))
-        if factor > 1:
-            thumbnail = image.reduce(factor)
-        else:
-            thumbnail = image.copy()
+        thumbnail = image.reduce(factor)
         return thumbnail
 
     def load_images_from_directory(self, directory: Path) -> List[Dict]:
@@ -113,17 +128,30 @@ class ImageProcessor:
         return images
 
     def load_image_from_bytes(self, data: bytes, filename: str) -> Optional[Dict]:
-        """从字节数据加载单张图片（仅存储原始字节，按需解压）"""
+        """从字节数据加载单张图片（写入临时文件，按需从磁盘读取）"""
         try:
             img = Image.open(BytesIO(data))
             img.load()
             thumbnail = self.generate_thumbnail(img)
             img.close()
 
+            # 将原始数据写入临时文件，释放内存
+            suffix = Path(filename).suffix or '.img'
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=suffix, prefix='img2pdf_'
+            )
+            try:
+                tmp.write(data)
+                tmp.flush()
+                temp_path = Path(tmp.name)
+            finally:
+                tmp.close()
+
             return {
                 'path': Path(filename),
                 'filename': filename,
-                'raw_data': data,
+                '_source_path': temp_path,
+                '_temp_file': True,
                 'thumbnail': thumbnail
             }
         except Exception as e:
@@ -154,36 +182,23 @@ class ImageProcessor:
         try:
             with zipfile.ZipFile(archive_path, 'r') as zf:
                 all_files = zf.namelist()
-                print(f"[DEBUG] zip 内共 {len(all_files)} 个条目")
 
                 # 获取所有图片文件并自然排序
                 image_files = []
                 for f in all_files:
                     if f.endswith('/'):
                         continue
-                    # 处理可能的编码问题：尝试 CP437 -> GBK 转换
-                    try:
-                        decoded_name = f.encode('cp437').decode('gbk')
-                    except (UnicodeDecodeError, UnicodeEncodeError):
-                        decoded_name = f
+                    decoded_name = _decode_zip_name(f)
                     suffix = Path(decoded_name).suffix.lower()
                     if suffix in SUPPORTED_IMAGE_FORMATS:
                         image_files.append(f)
-                    else:
-                        print(f"[DEBUG] 跳过: {f!r} (解码后={decoded_name!r}, 后缀={suffix!r})")
 
-                print(f"[DEBUG] 找到 {len(image_files)} 个图片文件")
                 image_files.sort(key=natural_sort_key)
                 total = len(image_files)
 
                 for i, filename in enumerate(image_files):
                     data = zf.read(filename)
-                    # 处理可能的目录前缀，只保留文件名
-                    try:
-                        decoded_name = filename.encode('cp437').decode('gbk')
-                    except (UnicodeDecodeError, UnicodeEncodeError):
-                        decoded_name = filename
-                    display_name = Path(decoded_name).name
+                    display_name = Path(_decode_zip_name(filename)).name
                     img_data = self.load_image_from_bytes(data, display_name)
                     if img_data:
                         images.append(img_data)

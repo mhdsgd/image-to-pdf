@@ -1,10 +1,17 @@
+import os
+import math
+import shutil
+import tempfile
+import multiprocessing
 from io import BytesIO
-from PIL import Image
+from typing import Any, List, Dict, Tuple, Optional, Callable
 from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
-from typing import List, Dict, Tuple
 from core.image_processor import ImageProcessor
+
+
+QUALITY_TARGETS = {'high': 1500, 'medium': 1000, 'low': 500}
 
 
 def _calculate_image_position(image_width, image_height, page_width, page_height, margin):
@@ -23,6 +30,44 @@ def _calculate_image_position(image_width, image_height, page_width, page_height
     y = margin + (available_height - new_height) / 2
 
     return x, y, new_width, new_height
+
+
+def _draw_image_on_canvas(c, img_data, page_width, page_height, margin, quality):
+    """处理单张图片并绘制到 canvas 上，返回 (reduced_img_or_None, error_msg_or_None)"""
+    reduced = None
+    try:
+        img = ImageProcessor.get_image(img_data)
+        if img is None:
+            return None, "图片加载失败"
+
+        if img.mode not in ('RGB', 'L'):
+            img = img.convert('RGB')
+
+        if quality != 'original':
+            target = QUALITY_TARGETS[quality]
+            w, h = img.size
+            factor = max(1, min(w // target, h // target))
+            if factor > 1:
+                reduced = img.reduce(factor)
+                img = reduced
+
+        x, y, width, height = _calculate_image_position(
+            img.width, img.height, page_width, page_height, margin
+        )
+
+        buf = BytesIO()
+        try:
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            c.drawImage(ImageReader(buf), x, y, width, height)
+        finally:
+            buf.close()
+
+        c.showPage()
+        return reduced, None
+
+    except Exception as e:
+        return reduced, str(e)
 
 
 def _generate_chunk_pdf(args):
@@ -48,45 +93,13 @@ def _generate_chunk_pdf(args):
         c = rl_canvas.Canvas(temp_path, pagesize=(page_width, page_height))
 
         for global_idx, img_data in chunk_images:
-            reduced = None
-            try:
-                img = ImageProcessor.get_image(img_data)
-                if img is None:
-                    failed.append(img_data.get('filename', '第{}张'.format(global_idx + 1)))
-                    continue
-
-                if img.mode not in ('RGB', 'L'):
-                    img = img.convert('RGB')
-
-                if quality != 'original':
-                    target = {'high': 1500, 'medium': 1000, 'low': 500}[quality]
-                    w, h = img.size
-                    factor = max(1, min(w // target, h // target))
-                    if factor > 1:
-                        reduced = img.reduce(factor)
-                        img = reduced
-
-                x, y, width, height = _calculate_image_position(
-                    img.width, img.height, page_width, page_height, margin
-                )
-
-                buf = BytesIO()
-                try:
-                    img.save(buf, format='PNG')
-                    buf.seek(0)
-                    c.drawImage(ImageReader(buf), x, y, width, height)
-                finally:
-                    buf.close()
-
-                c.showPage()
-
-            except Exception as e:
-                name = img_data.get('filename', '第{}张'.format(global_idx + 1))
-                failed.append("{}: {}".format(name, e))
-            finally:
-                if reduced is not None:
-                    reduced.close()
-                ImageProcessor.close_image(img_data)
+            name = img_data.get('filename', '第{}张'.format(global_idx + 1))
+            reduced, err = _draw_image_on_canvas(c, img_data, page_width, page_height, margin, quality)
+            if err:
+                failed.append("{}: {}".format(name, err))
+            if reduced is not None:
+                reduced.close()
+            ImageProcessor.close_image(img_data)
 
         c.save()
         return chunk_index, temp_path, failed
@@ -135,11 +148,9 @@ class PDFGenerator:
     def calculate_image_position(self, image_width, image_height, page_width, page_height, margin):
         return _calculate_image_position(image_width, image_height, page_width, page_height, margin)
 
-    def generate_pdf(self, images, output_path, quality=None, progress_callback=None):
-        # type: (List[Dict], any, str, any) -> Tuple[bool, str]
+    def generate_pdf(self, images: List[Dict], output_path: Any, quality: Optional[str] = None,
+                     progress_callback: Optional[Callable] = None) -> Tuple[bool, str]:
         """生成PDF文件，返回 (成功与否, 错误信息)"""
-        import os
-
         if quality is None:
             quality = self.quality
 
@@ -152,9 +163,7 @@ class PDFGenerator:
         return self._generate_parallel(images, output_path, quality, progress_callback)
 
     def _generate_sequential(self, images, output_path, quality, progress_callback):
-        """串行生成PDF（原有逻辑）"""
-        import os
-
+        """串行生成PDF"""
         page_width, page_height = self.calculate_page_dimensions()
         total = len(images)
         output_path = str(output_path)
@@ -164,49 +173,16 @@ class PDFGenerator:
             c = canvas.Canvas(output_path, pagesize=(page_width, page_height))
 
             for i, img_data in enumerate(images):
-                reduced = None
-                try:
-                    img = ImageProcessor.get_image(img_data)
-
-                    if img is None:
-                        failed.append(img_data.get('filename', '第{}张'.format(i + 1)))
-                        continue
-
-                    if img.mode not in ('RGB', 'L'):
-                        img = img.convert('RGB')
-
-                    if quality == 'original':
-                        pass
-                    else:
-                        target = {'high': 1500, 'medium': 1000, 'low': 500}[quality]
-                        w, h = img.size
-                        factor = max(1, min(w // target, h // target))
-                        if factor > 1:
-                            reduced = img.reduce(factor)
-                            img = reduced
-
-                    x, y, width, height = self.calculate_image_position(
-                        img.width, img.height, page_width, page_height, self.margin
-                    )
-
-                    buf = BytesIO()
-                    try:
-                        img.save(buf, format='PNG')
-                        buf.seek(0)
-                        c.drawImage(ImageReader(buf), x, y, width, height)
-                    finally:
-                        buf.close()
-
-                    c.showPage()
-
-                except Exception as e:
-                    name = img_data.get('filename', '第{}张'.format(i + 1))
-                    failed.append("{}: {}".format(name, e))
-                    print("处理图片失败: {}, 错误: {}".format(name, e))
-                finally:
-                    if reduced is not None:
-                        reduced.close()
-                    ImageProcessor.close_image(img_data)
+                name = img_data.get('filename', '第{}张'.format(i + 1))
+                reduced, err = _draw_image_on_canvas(
+                    c, img_data, page_width, page_height, self.margin, quality
+                )
+                if err:
+                    failed.append("{}: {}".format(name, err))
+                    print("处理图片失败: {}, 错误: {}".format(name, err))
+                if reduced is not None:
+                    reduced.close()
+                ImageProcessor.close_image(img_data)
 
                 if progress_callback:
                     progress_callback(i + 1, total)
@@ -240,11 +216,6 @@ class PDFGenerator:
 
     def _generate_parallel(self, images, output_path, quality, progress_callback):
         """并行生成PDF：分块 → 多进程生成中间PDF → 合并"""
-        import os
-        import math
-        import tempfile
-        import multiprocessing
-
         output_path = str(output_path)
         total = len(images)
         chunk_size = self.CHUNK_SIZE
@@ -343,10 +314,7 @@ class PDFGenerator:
                         os.remove(tp)
                     except Exception:
                         pass
-            try:
-                os.rmdir(temp_dir)
-            except Exception:
-                pass
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
             # 返回结果
             if failed and len(failed) < total:
@@ -373,10 +341,7 @@ class PDFGenerator:
                         os.remove(tp)
                     except Exception:
                         pass
-            try:
-                os.rmdir(temp_dir)
-            except Exception:
-                pass
+            shutil.rmtree(temp_dir, ignore_errors=True)
             try:
                 if os.path.exists(output_path):
                     os.remove(output_path)

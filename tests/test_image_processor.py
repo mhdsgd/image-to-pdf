@@ -75,9 +75,12 @@ def test_load_image_from_bytes_jpg():
     result = processor.load_image_from_bytes(data, "test.jpg")
     assert result is not None
     assert result['filename'] == "test.jpg"
-    assert 'raw_data' in result
+    assert '_source_path' in result
     assert ImageProcessor.get_image(result).size == (100, 100)
     assert 'thumbnail' in result
+
+    # 清理临时文件
+    ImageProcessor.close_image(result)
 
 
 def test_load_image_from_bytes_png():
@@ -94,8 +97,11 @@ def test_load_image_from_bytes_png():
     result = processor.load_image_from_bytes(data, "test.png")
     assert result is not None
     assert result['filename'] == "test.png"
-    assert 'raw_data' in result
+    assert '_source_path' in result
     assert ImageProcessor.get_image(result).size == (100, 100)
+
+    # 清理临时文件
+    ImageProcessor.close_image(result)
 
 
 def test_load_image_from_bytes_invalid():
@@ -130,6 +136,8 @@ def test_load_images_from_zip():
     assert images[2]['filename'] == "image_2.jpg"
 
     # 清理
+    for img in images:
+        ImageProcessor.close_image(img)
     zip_path.unlink()
 
 
@@ -155,6 +163,8 @@ def test_load_images_from_zip_with_subdirectory():
     assert images[0]['filename'] == "image_0.png"
 
     # 清理
+    for img in images:
+        ImageProcessor.close_image(img)
     zip_path.unlink()
 
 
@@ -184,6 +194,8 @@ def test_load_images_from_zip_natural_sort():
     assert images[3]['filename'] == "img20.jpg"
 
     # 清理
+    for img in images:
+        ImageProcessor.close_image(img)
     zip_path.unlink()
 
 
