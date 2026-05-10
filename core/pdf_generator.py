@@ -246,23 +246,8 @@ class PDFGenerator:
         ]
 
         failed = []
-        temp_paths = [None] * chunk_count
-        completed = [0]
-
-        # 使用 apply_async 收集结果，完成后回调进度
-        def on_result(result):
-            chunk_idx, temp_path, chunk_failed = result
-            temp_paths[chunk_idx] = temp_path
-            failed.extend(chunk_failed)
-            completed[0] += 1
-            if progress_callback:
-                progress_callback(completed[0], chunk_count)
-
-        def on_error(exc):
-            failed.append("进程异常: {}".format(exc))
-            completed[0] += 1
-            if progress_callback:
-                progress_callback(completed[0], chunk_count)
+        temp_paths = []
+        completed = 0
 
         cpu_count = multiprocessing.cpu_count() or 1
         mode = getattr(self, 'parallel_mode', 'auto')
@@ -278,18 +263,22 @@ class PDFGenerator:
         try:
             pool = multiprocessing.Pool(processes=num_processes)
 
-            for args in worker_args:
-                pool.apply_async(_generate_chunk_pdf, args=(args,),
-                                 callback=on_result, error_callback=on_error)
+            # imap_unordered 按完成顺序返回结果，先完成的 chunk 先被收集
+            for chunk_idx, temp_path, chunk_failed in pool.imap_unordered(
+                    _generate_chunk_pdf, worker_args):
+                temp_paths.append((chunk_idx, temp_path))
+                failed.extend(chunk_failed)
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, chunk_count)
 
             pool.close()
             pool.join()
 
-            # 检查是否所有chunk都成功返回了临时文件
-            valid_paths = [p for p in temp_paths if p is not None and os.path.exists(p)]
+            # 按 chunk 索引排序，确保页码顺序正确
+            valid_paths = [tp for _, tp in sorted(temp_paths) if tp is not None and os.path.exists(tp)]
 
             if not valid_paths:
-                # 所有chunk都失败
                 try:
                     if os.path.exists(output_path):
                         os.remove(output_path)
@@ -315,7 +304,7 @@ class PDFGenerator:
                 return False, "PDF合并失败: {}".format(e)
 
             # 清理临时文件
-            for tp in temp_paths:
+            for _, tp in temp_paths:
                 if tp is not None:
                     try:
                         os.remove(tp)
@@ -323,7 +312,6 @@ class PDFGenerator:
                         pass
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-            # 返回结果
             if failed and len(failed) < total:
                 msg = "{}张图片处理失败:\n{}".format(len(failed), "\n".join(failed[:10]))
                 if len(failed) > 10:
@@ -341,8 +329,7 @@ class PDFGenerator:
             return True, ""
 
         except Exception as e:
-            # 清理临时文件
-            for tp in temp_paths:
+            for _, tp in temp_paths:
                 if tp is not None:
                     try:
                         os.remove(tp)
