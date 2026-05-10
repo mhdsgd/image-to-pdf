@@ -50,6 +50,13 @@ def _draw_image_on_canvas(c, img_data, page_width, page_height, margin, quality)
             if factor > 1:
                 reduced = img.reduce(factor)
                 img = reduced
+                # 释放缓存的全尺寸图片，避免与 reduced 版本同时占用内存
+                cached = img_data.pop('_cached_image', None)
+                if cached is not None and cached is not reduced:
+                    try:
+                        cached.close()
+                    except Exception:
+                        pass
 
         x, y, width, height = _calculate_image_position(
             img.width, img.height, page_width, page_height, margin
@@ -57,7 +64,7 @@ def _draw_image_on_canvas(c, img_data, page_width, page_height, margin, quality)
 
         buf = BytesIO()
         try:
-            img.save(buf, format='PNG')
+            img.save(buf, format='JPEG', quality=85)
             buf.seek(0)
             c.drawImage(ImageReader(buf), x, y, width, height)
         finally:

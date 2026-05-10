@@ -44,21 +44,26 @@ class ImageProcessor:
         if source_path is None:
             return None
         try:
-            data = Path(source_path).read_bytes()
+            img = Image.open(source_path)
+            img.load()
         except (FileNotFoundError, OSError):
             return None
-        img = Image.open(BytesIO(data))
-        img.load()
         img_data['_cached_image'] = img
         return img
 
     @staticmethod
     def close_image(img_data: Dict):
-        """释放缓存的 PIL 图片，并清理临时文件（如果有）"""
+        """释放缓存的 PIL 图片、缩略图，并清理临时文件（如果有）"""
         cached = img_data.pop('_cached_image', None)
         if cached is not None:
             try:
                 cached.close()
+            except Exception:
+                pass
+        thumbnail = img_data.pop('thumbnail', None)
+        if thumbnail is not None:
+            try:
+                thumbnail.close()
             except Exception:
                 pass
         if img_data.pop('_temp_file', False):

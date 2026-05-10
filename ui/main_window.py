@@ -1,3 +1,4 @@
+import gc
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QFileDialog, QMessageBox, QStatusBar,
                              QProgressBar, QSplitter)
@@ -318,6 +319,7 @@ class MainWindow(QMainWindow):
         self.images.clear()
         self.image_list.clear_images()
         self.preview.set_images([])
+        gc.collect()
         self.status_bar.showMessage("已清空图片列表")
 
     def on_generate_clicked(self):
